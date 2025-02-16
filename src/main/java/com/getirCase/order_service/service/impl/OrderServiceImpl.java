@@ -7,9 +7,7 @@ import com.getirCase.order_service.enums.KafkaTopics;
 import com.getirCase.order_service.enums.OrderStatus;
 import com.getirCase.order_service.exception.CustomerNotFoundException;
 import com.getirCase.order_service.exception.OrderNotFoundException;
-import com.getirCase.order_service.model.event.CustomerOrderCreatedEvent;
 import com.getirCase.order_service.model.event.CustomerTierUpdatedEvent;
-import com.getirCase.order_service.model.request.OrderCountRequest;
 import com.getirCase.order_service.model.request.OrderRequest;
 import com.getirCase.order_service.model.response.CustomerResponse;
 import com.getirCase.order_service.model.response.OrderResponse;
@@ -88,7 +86,7 @@ public class OrderServiceImpl implements OrderService {
                             .orderCount(customer.getOrderCount() + 1)
                              .build();
 
-            kafkaProducerService.sendEvent(customerTierUpdatedEvent.getEventType(), "customer.events");
+            kafkaProducerService.sendEvent(customerTierUpdatedEvent,KafkaTopics.CUSTOMER_EVENTS.getTopicName());
         }
 
         return OrderResponse.builder()
