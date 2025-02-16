@@ -1,0 +1,25 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/order_db
+    username: postgres
+    password: getir
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+  sql:
+    init:
+      mode: always
+
+feign:
+  client:
+    config:
+      default:
+        connectTimeout: 5000   # 5 saniye bağlantı süresi
+        readTimeout: 5000      # 5 saniye yanıt bekleme süresi
+        loggerLevel: full      # Feign log seviyesini aç
+server:
+  port: 8081
