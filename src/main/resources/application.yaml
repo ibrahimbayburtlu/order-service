@@ -23,3 +23,8 @@ feign:
         loggerLevel: full      # Feign log seviyesini aç
 server:
   port: 8081
+
+logging:
+  level:
+    org.apache.kafka: OFF
+    org.springframework.kafka: OFF

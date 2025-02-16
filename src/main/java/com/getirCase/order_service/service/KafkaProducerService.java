@@ -2,12 +2,10 @@ package com.getirCase.order_service.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.getirCase.order_service.enums.KafkaEventType;
-import com.getirCase.order_service.enums.KafkaTopics;
+import com.getirCase.order_service.model.event.KafkaEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
-
-import java.util.Map;
 
 @Slf4j
 @Service
@@ -21,14 +19,16 @@ public class KafkaProducerService {
         this.objectMapper = objectMapper;
     }
 
-    public void sendEvent(KafkaEventType event, String topic) {
+    public <T extends KafkaEvent> void sendEvent(T event, String topic) {
         try {
-            String eventJson = objectMapper.writeValueAsString(Map.of("eventType", event.name()));
+            String eventJson = objectMapper.writeValueAsString(event); // Artık tüm alanlar JSON'a çevrilecek
             kafkaTemplate.send(topic, eventJson);
             log.info("Sent Kafka event to topic {}: {}", topic, eventJson);
         } catch (Exception e) {
             log.error("Failed to send Kafka event to topic {}", topic, e);
         }
     }
+
+
 
 }
