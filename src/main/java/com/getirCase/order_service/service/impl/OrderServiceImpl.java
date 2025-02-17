@@ -7,6 +7,7 @@ import com.getirCase.order_service.enums.KafkaTopics;
 import com.getirCase.order_service.enums.OrderStatus;
 import com.getirCase.order_service.exception.CustomerNotFoundException;
 import com.getirCase.order_service.exception.OrderNotFoundException;
+import com.getirCase.order_service.model.event.CustomerOrderCreatedEvent;
 import com.getirCase.order_service.model.event.CustomerTierUpdatedEvent;
 import com.getirCase.order_service.model.request.OrderRequest;
 import com.getirCase.order_service.model.response.CustomerResponse;
@@ -74,20 +75,19 @@ public class OrderServiceImpl implements OrderService {
         newOrder.setCustomerId(orderRequest.getCustomerId());
         newOrder.setTotalAmount(finalAmount);
         newOrder.setDiscountAmount(discount);
-        newOrder.setStatus(OrderStatus.PENDING);
+        newOrder.setStatus(OrderStatus.COMPLETED);
 
         Order savedOrder = orderRepository.save(newOrder);
         logger.info("Order created successfully with ID: {}", savedOrder.getOrderId());
 
-        if (customer.getOrderCount() + 1 == 10 || customer.getOrderCount() + 1 == 20) {
+        CustomerOrderCreatedEvent orderCreatedEvent = CustomerOrderCreatedEvent.builder()
+                .orderId(savedOrder.getOrderId())
+                .customerId(savedOrder.getCustomerId())
+                .totalAmount(savedOrder.getTotalAmount())
+                .discountAmount(savedOrder.getDiscountAmount())
+                .build();
 
-            CustomerTierUpdatedEvent customerTierUpdatedEvent = CustomerTierUpdatedEvent.builder()
-                            .customerId(orderRequest.getCustomerId())
-                            .orderCount(customer.getOrderCount() + 1)
-                             .build();
-
-            kafkaProducerService.sendEvent(customerTierUpdatedEvent,KafkaTopics.CUSTOMER_EVENTS.getTopicName());
-        }
+        kafkaProducerService.sendEvent(orderCreatedEvent,KafkaTopics.CUSTOMER_EVENTS.getTopicName());
 
         return OrderResponse.builder()
                 .orderId(savedOrder.getOrderId())
