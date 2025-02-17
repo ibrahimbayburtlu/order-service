@@ -1,6 +1,5 @@
 package com.getirCase.order_service.client;
 
-import com.getirCase.order_service.constants.ApiEndpoints;
 import com.getirCase.order_service.model.request.OrderCountRequest;
 import com.getirCase.order_service.model.response.CustomerResponse;
 import org.springframework.cloud.openfeign.FeignClient;
