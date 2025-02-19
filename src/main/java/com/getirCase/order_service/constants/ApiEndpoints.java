@@ -19,4 +19,9 @@ public final class ApiEndpoints {
     public static final String UPDATE_TIER = "/{id}/tier";
     public static final String UPDATE_ORDER_COUNT = "/{id}/count";
 
+    public static final String DISCOUNT_PORT = "http://localhost:8083";
+    public static final String DISCOUNT_BASE =  "/discounts";
+    public static final String GET_DISCOUNT = "/{customerTier}";
+    public static final String DISCOUNT_URL = DISCOUNT_PORT+DISCOUNT_BASE;
+
 }

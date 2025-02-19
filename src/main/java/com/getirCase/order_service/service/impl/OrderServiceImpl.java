@@ -1,6 +1,7 @@
 package com.getirCase.order_service.service.impl;
 
 import com.getirCase.order_service.client.CustomerClient;
+import com.getirCase.order_service.client.DiscountClient;
 import com.getirCase.order_service.entity.Order;
 import com.getirCase.order_service.enums.CustomerTier;
 import com.getirCase.order_service.enums.KafkaTopics;
@@ -11,6 +12,7 @@ import com.getirCase.order_service.model.event.CustomerOrderCreatedEvent;
 import com.getirCase.order_service.model.event.CustomerTierUpdatedEvent;
 import com.getirCase.order_service.model.request.OrderRequest;
 import com.getirCase.order_service.model.response.CustomerResponse;
+import com.getirCase.order_service.model.response.DiscountResponse;
 import com.getirCase.order_service.model.response.OrderResponse;
 import com.getirCase.order_service.repository.OrderRepository;
 import com.getirCase.order_service.service.KafkaProducerService;
@@ -33,6 +35,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final CustomerClient customerClient;
     private final KafkaProducerService kafkaProducerService;
+    private final DiscountClient discountClient;
 
     /**
      * Retrieve an order by ID.
@@ -66,16 +69,22 @@ public class OrderServiceImpl implements OrderService {
             throw new CustomerNotFoundException("Customer with ID " + orderRequest.getCustomerId() + " not found.");
         }
 
+        DiscountResponse discountResponse = discountClient.getDiscount(customer.getTier().toString());
 
-        BigDecimal discount = calculateDiscount(customer.getTier(), orderRequest.getTotalAmount());
-        BigDecimal finalAmount = orderRequest.getTotalAmount().subtract(discount);
+        BigDecimal amountBeforeDiscount = orderRequest.getTotalAmount();
 
+        BigDecimal discountPercent = discountResponse.getDiscountPercent().divide(BigDecimal.valueOf(100)); // %10'u 0.10 olarak al
+
+        BigDecimal discount = amountBeforeDiscount.multiply(discountPercent);
+
+        BigDecimal amountAfterDiscount = amountBeforeDiscount.subtract(discount);
 
         Order newOrder = new Order();
         newOrder.setCustomerId(orderRequest.getCustomerId());
-        newOrder.setTotalAmount(finalAmount);
+        newOrder.setTotalAmount(amountAfterDiscount);
         newOrder.setDiscountAmount(discount);
         newOrder.setStatus(OrderStatus.COMPLETED);
+
 
         Order savedOrder = orderRepository.save(newOrder);
         logger.info("Order created successfully with ID: {}", savedOrder.getOrderId());
@@ -92,7 +101,7 @@ public class OrderServiceImpl implements OrderService {
         return OrderResponse.builder()
                 .orderId(savedOrder.getOrderId())
                 .customerId(savedOrder.getCustomerId())
-                .totalAmount(finalAmount)
+                .totalAmount(amountAfterDiscount)
                 .discountAmount(discount)
                 .orderDate(savedOrder.getOrderDate())
                 .status(savedOrder.getStatus())
