@@ -1,16 +1,19 @@
 package com.getirCase.order_service.service.impl;
 
 import com.getirCase.order_service.client.CustomerClient;
+import com.getirCase.order_service.client.DiscountClient;
 import com.getirCase.order_service.entity.Order;
 import com.getirCase.order_service.enums.CustomerTier;
 import com.getirCase.order_service.enums.KafkaTopics;
 import com.getirCase.order_service.enums.OrderStatus;
 import com.getirCase.order_service.exception.CustomerNotFoundException;
+import com.getirCase.order_service.exception.DiscountServiceException;
 import com.getirCase.order_service.exception.OrderNotFoundException;
 import com.getirCase.order_service.model.event.CustomerOrderCreatedEvent;
-import com.getirCase.order_service.model.event.CustomerTierUpdatedEvent;
+import com.getirCase.order_service.model.request.DiscountRequest;
 import com.getirCase.order_service.model.request.OrderRequest;
 import com.getirCase.order_service.model.response.CustomerResponse;
+import com.getirCase.order_service.model.response.DiscountResponse;
 import com.getirCase.order_service.model.response.OrderResponse;
 import com.getirCase.order_service.repository.OrderRepository;
 import com.getirCase.order_service.service.KafkaProducerService;
@@ -23,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 @Service
 @RequiredArgsConstructor
@@ -33,6 +37,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderRepository orderRepository;
     private final CustomerClient customerClient;
     private final KafkaProducerService kafkaProducerService;
+    private final DiscountClient discountClient;
 
     /**
      * Retrieve an order by ID.
@@ -58,7 +63,6 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponse createOrder(OrderRequest orderRequest) {
         logger.info("Fetching customer info for ID: {}", orderRequest.getCustomerId());
 
-
         CustomerResponse customer;
         try {
             customer = customerClient.getCustomerById(orderRequest.getCustomerId());
@@ -67,18 +71,56 @@ public class OrderServiceImpl implements OrderService {
         }
 
 
-        BigDecimal discount = calculateDiscount(customer.getTier(), orderRequest.getTotalAmount());
-        BigDecimal finalAmount = orderRequest.getTotalAmount().subtract(discount);
-
-
         Order newOrder = new Order();
         newOrder.setCustomerId(orderRequest.getCustomerId());
-        newOrder.setTotalAmount(finalAmount);
-        newOrder.setDiscountAmount(discount);
-        newOrder.setStatus(OrderStatus.COMPLETED);
+        newOrder.setTotalAmount(orderRequest.getTotalAmount());
+        newOrder.setDiscountAmount(BigDecimal.ZERO); // Default discount
+        newOrder.setStatus(OrderStatus.PENDING);
+
 
         Order savedOrder = orderRepository.save(newOrder);
         logger.info("Order created successfully with ID: {}", savedOrder.getOrderId());
+
+
+        DiscountRequest discountRequest = DiscountRequest.builder()
+                .customerId(orderRequest.getCustomerId())
+                .orderId(savedOrder.getOrderId()) // Use the real orderId
+                .customerTier(customer.getTier()) // Fetch customer tier
+                .amountBeforeDiscount(orderRequest.getTotalAmount())
+                .build();
+
+
+        DiscountResponse discountResponse;
+        try {
+            discountResponse = discountClient.getDiscount(discountRequest);
+        } catch (FeignException e) {
+            logger.error("Failed to fetch discount for order ID: {}", savedOrder.getOrderId(), e);
+            throw new DiscountServiceException("Failed to fetch discount information");
+        }
+
+
+        BigDecimal discountPercent = discountResponse.getDiscountPercent();
+        if (discountPercent == null) {
+            logger.warn("Discount percent is null. Defaulting to 0%");
+            discountPercent = BigDecimal.ZERO;
+        }
+
+
+        BigDecimal discountAmount = BigDecimal.ZERO;
+        BigDecimal amountAfterDiscount = savedOrder.getTotalAmount();
+
+        if (discountPercent.compareTo(BigDecimal.ZERO) > 0) {
+            discountAmount = savedOrder.getTotalAmount()
+                    .multiply(discountPercent)
+                    .divide(BigDecimal.valueOf(100), RoundingMode.HALF_UP);
+            amountAfterDiscount = savedOrder.getTotalAmount().subtract(discountAmount);
+        }
+
+
+        savedOrder.setDiscountAmount(discountAmount);
+        savedOrder.setTotalAmount(amountAfterDiscount);
+        savedOrder.setStatus(OrderStatus.COMPLETED);
+        orderRepository.save(savedOrder);
 
         CustomerOrderCreatedEvent orderCreatedEvent = CustomerOrderCreatedEvent.builder()
                 .orderId(savedOrder.getOrderId())
@@ -87,17 +129,19 @@ public class OrderServiceImpl implements OrderService {
                 .discountAmount(savedOrder.getDiscountAmount())
                 .build();
 
-        kafkaProducerService.sendEvent(orderCreatedEvent,KafkaTopics.CUSTOMER_EVENTS.getTopicName());
+        kafkaProducerService.sendEvent(orderCreatedEvent, KafkaTopics.CUSTOMER_EVENTS.getTopicName());
 
         return OrderResponse.builder()
                 .orderId(savedOrder.getOrderId())
                 .customerId(savedOrder.getCustomerId())
-                .totalAmount(finalAmount)
-                .discountAmount(discount)
+                .totalAmount(amountAfterDiscount)
+                .discountAmount(discountAmount)
                 .orderDate(savedOrder.getOrderDate())
                 .status(savedOrder.getStatus())
                 .build();
     }
+
+
 
 
     /**
